@@ -1,54 +1,81 @@
-async function main() {
-  const project = await window.websim.getCurrentProject();
-  const commentsContainer = document.getElementById('comments-container');
+let intervalId = null; // To potentially clear later if needed
 
-  if (!project || !project.id) {
-    commentsContainer.innerHTML = '<p>No project context found or project ID is missing.</p>';
-    return;
-  }
-
+async function fetchAndRenderComments(projectId, commentsContainer) {
   try {
-    // Fetch most recent comments first
-    const response = await fetch(`/api/v1/projects/${project.id}/comments?sort_by=created_at&sort_order=desc&first=10`);
+    const response = await fetch(`/api/v1/projects/${projectId}/comments?sort_by=created_at&sort_order=desc&first=10`);
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status} - ${await response.text()}`);
+      console.error(`HTTP error! status: ${response.status} - ${await response.text()}`);
+      // Display a transient error or keep old content; for now, just log and return.
+      // If the container was already cleared and this fetch fails, it might stay empty or show a generic error.
+      // We can refine this by having a dedicated error display area.
+      // For now, if fetch fails, we don't update the DOM, letting the previous state (or error) persist.
+      return; 
     }
     const commentsCollection = await response.json();
     
-    console.log('Raw API response:', commentsCollection); // Debug log
-    
-    // Ensure commentsCollection exists and has the expected structure
-    if (!commentsCollection) {
-        throw new Error('No data received from API.');
-    }
-    
-    // Handle different possible response structures
+    console.log('Raw API response for polling:', commentsCollection); // Debug log for polling
+
     let comments = [];
-    if (commentsCollection.comments && commentsCollection.comments.data) {
-      // Structure: { comments: { data: [...] } }
-      comments = commentsCollection.comments.data.map(c => c.comment);
-    } else if (commentsCollection.data) {
-      // Structure: { data: [...] }
-      comments = commentsCollection.data.map(c => c.comment);
+    if (commentsCollection && commentsCollection.comments && Array.isArray(commentsCollection.comments.data)) {
+      comments = commentsCollection.comments.data
+        .filter(item => item && item.comment) // Ensure item and item.comment exist
+        .map(item => item.comment);
     } else {
-      console.warn('Unexpected API response structure:', commentsCollection);
-      throw new Error('Invalid comments data structure received from API.');
+      console.warn('Unexpected API response structure or missing comment data during poll:', commentsCollection);
+      commentsContainer.innerHTML = '<p>Error: Could not parse comments data from API. Structure might have changed.</p>';
+      return;
     }
 
-    commentsContainer.innerHTML = ''; // Clear "Loading..." message
+    // Clear "Loading..." or old comments *before* rendering new set
+    // This ensures that if renderNestedComments has an issue, the container is at least cleared.
+    commentsContainer.innerHTML = ''; 
 
     if (comments.length > 0) {
-      renderNestedComments(comments, commentsContainer);
+      renderNestedComments(comments, commentsContainer, 0); // Start with depth 0
     } else {
       commentsContainer.innerHTML = '<p>No comments found for this project.</p>';
     }
   } catch (error) {
     console.error('Error fetching or rendering comments:', error);
+    // If an error occurs after clearing, display error in container.
+    // This is a general catch-all.
     commentsContainer.innerHTML = `<p>Error loading comments: ${error.message}. Check console for more details.</p>`;
   }
 }
 
-function renderNestedComments(commentsArray, parentDomElement) {
+async function main() {
+  try {
+    const project = await window.websim.getCurrentProject();
+    const commentsContainer = document.getElementById('comments-container');
+
+    if (!project || !project.id) {
+      commentsContainer.innerHTML = '<p>No project context found or project ID is missing.</p>';
+      return;
+    }
+    
+    commentsContainer.innerHTML = '<p>Loading comments...</p>'; // Initial loading message
+
+    // Initial fetch
+    await fetchAndRenderComments(project.id, commentsContainer);
+
+    // Set up polling
+    if (intervalId) { 
+      clearInterval(intervalId);
+    }
+    intervalId = setInterval(() => {
+      fetchAndRenderComments(project.id, commentsContainer);
+    }, 7000);
+
+  } catch (error) {
+    console.error("Error in main initialization:", error);
+    const commentsContainer = document.getElementById('comments-container');
+    if (commentsContainer) {
+        commentsContainer.innerHTML = '<p>Failed to initialize comment viewer. See console for details.</p>';
+    }
+  }
+}
+
+function renderNestedComments(commentsArray, parentDomElement, depth) {
   if (!commentsArray || commentsArray.length === 0) {
     return parentDomElement;
   }
@@ -58,8 +85,11 @@ function renderNestedComments(commentsArray, parentDomElement) {
 
   const commentDiv = document.createElement('div');
   commentDiv.className = 'comment-inception';
-  // Generate a pseudo-random light background color for visual distinction of nesting
-  commentDiv.style.backgroundColor = `hsl(${Math.floor(Math.random() * 60) + 180}, 60%, 92%)`; // Blues/Cyans/Greens spectrum, light
+  
+  // Deterministic background color based on depth
+  const hues = [200, 220, 180, 160, 240, 140]; // Blues, Cyans, Greens, Purples - light pastel shades
+  const hue = hues[depth % hues.length];
+  commentDiv.style.backgroundColor = `hsl(${hue}, 70%, 95%)`;
 
   // Author info
   const authorDiv = document.createElement('div');
@@ -118,7 +148,7 @@ function renderNestedComments(commentsArray, parentDomElement) {
 
   parentDomElement.appendChild(commentDiv);
 
-  renderNestedComments(remainingComments, nextCommentWrapper);
+  renderNestedComments(remainingComments, nextCommentWrapper, depth + 1); // Pass incremented depth
   
   return commentDiv;
 }
