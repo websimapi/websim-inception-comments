@@ -277,26 +277,57 @@ function renderInlineContent(node, parentElement) {
         }
         altText = altText.trim();
         // Fallback alt text if no text children provide a description
-        img.alt = altText || 'Linked image: ' + (node.url.substring(node.url.lastIndexOf('/') + 1) || node.url);
+        img.alt = altText || ('Linked image: ' + (node.url.substring(node.url.lastIndexOf('/') + 1) || node.url));
         
         img.className = 'content-image'; // Apply the styling for contained 256x256 images
         parentElement.appendChild(img);
 
         // Caption logic: Render children as caption if they provide meaningful content
-        // that isn't just the alt text we've already used.
+        // This is modified to prevent duplicate image rendering.
         if (node.children && node.children.length > 0) {
           const captionDiv = document.createElement('div');
-          captionDiv.className = 'iframe-caption'; // Reuse caption style
-          node.children.forEach(childNode => renderInlineContent(childNode, captionDiv));
+          captionDiv.className = 'iframe-caption'; 
+          
+          node.children.forEach(childNode => {
+            if (childNode.type === 'image') {
+              // If child is an ImageNode, add its alt text to the caption (if any).
+              // Do not render it as another <img> tag.
+              if (childNode.alt && childNode.alt.trim() !== '') {
+                const textSpan = document.createElement('span');
+                textSpan.textContent = childNode.alt;
+                // Apply text styles from ImageNode if they were part of its schema (currently not)
+                // e.g., if (childNode.bold) textSpan.style.fontWeight = 'bold';
+                captionDiv.appendChild(textSpan);
+              }
+            } else if (childNode.type === 'link' && isImageUrl(childNode.url)) {
+              // If child is another LinkNode that points to an image,
+              // extract text from its children (grandchildren of the main link node) for the caption.
+              // Do not render this nested link as another image.
+              if (childNode.children) {
+                childNode.children.forEach(grandChildNode => {
+                  if (grandChildNode.type === 'text' || grandChildNode.type === 'break') {
+                     // Only render text or breaks from grandchildren of an image link.
+                    renderInlineContent(grandChildNode, captionDiv);
+                  }
+                  // Other types of grandchildren (like nested images) are ignored here to prevent duplication.
+                });
+              }
+            } else {
+              // For all other types of children (TextNode, BreakNode, non-image LinkNode),
+              // render them normally into the caption.
+              renderInlineContent(childNode, captionDiv);
+            }
+          });
           
           const captionText = captionDiv.textContent.trim();
-          const captionHTML = captionDiv.innerHTML.trim();
+          const captionHTML = captionDiv.innerHTML.trim(); // Actual HTML content of the caption
 
           let showCaption = false;
-          if (captionHTML) { // If caption has any content (text or elements)
-            // Show if caption text is different from the image's alt text,
-            // or if caption contains non-text elements (like another image, unlikely but possible)
-            if (captionText !== img.alt || (captionText === '' && captionHTML !== img.alt)) {
+          // Original logic for deciding whether to show the caption for an image link.
+          // Show if captionHTML has content AND (captionText is different from img.alt OR 
+          // (captionText is empty but captionHTML is not empty and also not same as img.alt)).
+          if (captionHTML) { 
+            if (captionText !== img.alt || (captionText === '' && captionHTML !== img.alt && captionHTML !== '')) {
                showCaption = true;
             }
           }
