@@ -248,6 +248,169 @@ function isImageUrl(url) {
   }
 }
 
+// Helper to format large numbers (e.g., 1234 -> 1.2K)
+function formatStat(num) {
+  if (num === null || num === undefined) return '0';
+  if (num >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (num >= 1000) return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+  return num.toString();
+}
+
+// Helper to identify Websim project/site links
+function getWebsimLinkInfo(url) {
+  try {
+    const parsedUrl = new URL(url, window.location.origin); 
+    if (parsedUrl.hostname !== 'websim.com' && parsedUrl.hostname !== 'www.websim.com') {
+      return null;
+    }
+
+    const pathParts = parsedUrl.pathname.split('/').filter(Boolean);
+
+    if (pathParts.length === 2) {
+      if (pathParts[0] === 'p' && /^[a-z0-9_-]{20}$/.test(pathParts[1])) {
+        return { type: 'project', id: pathParts[1], originalUrl: parsedUrl.href };
+      } else if (pathParts[0] === 'c' && /^[a-zA-Z0-9]{17}$/.test(pathParts[1])) {
+        return { type: 'site', id: pathParts[1], originalUrl: parsedUrl.href };
+      }
+    }
+    return null;
+  } catch (e) {
+    console.warn('Error parsing URL in getWebsimLinkInfo:', url, e);
+    return null;
+  }
+}
+
+async function renderWebsimProjectPreview(websimInfo, linkNode, parentElement) {
+  const card = document.createElement('a');
+  card.href = websimInfo.originalUrl;
+  card.className = 'websim-preview-card loading';
+  card.target = '_blank';
+  card.rel = 'noopener noreferrer';
+  card.textContent = `Loading preview for ${websimInfo.id}...`;
+  parentElement.appendChild(card);
+
+  try {
+    const response = await fetch(`/api/v1/projects/${websimInfo.id}`);
+    if (!response.ok) {
+      throw new Error(`HTTP error ${response.status}`);
+    }
+    const data = await response.json();
+    const project = data.project;
+    const projectRevision = data.project_revision;
+    const site = data.site;
+
+    if (!project) {
+        throw new Error('Project data not found in API response.');
+    }
+
+    card.innerHTML = ''; // Clear loading text
+    card.classList.remove('loading');
+
+    // Thumbnail/Screenshot
+    const screenshotWrapper = document.createElement('div');
+    screenshotWrapper.className = 'websim-preview-screenshot-wrapper';
+    const screenshotImg = document.createElement('img');
+    screenshotImg.className = 'websim-preview-screenshot';
+    let thumbnailUrl = '/a/84858922-e894-40d0-837c-0f79f781753c'; // Default placeholder
+    if (projectRevision && projectRevision.current_screenshot_url) {
+      thumbnailUrl = projectRevision.current_screenshot_url;
+    } else if (site && site.id) {
+      thumbnailUrl = `https://images.websim.com/v1/site/${site.id}/300`;
+    }
+    screenshotImg.src = thumbnailUrl;
+    screenshotImg.alt = `Preview of ${project.title || 'Websim Project'}`;
+    screenshotWrapper.appendChild(screenshotImg);
+    card.appendChild(screenshotWrapper);
+    
+    screenshotImg.onerror = () => { 
+        screenshotImg.src = '/a/84858922-e894-40d0-837c-0f79f781753c'; 
+        screenshotImg.alt = 'Placeholder image';
+    };
+
+
+    // Details
+    const detailsDiv = document.createElement('div');
+    detailsDiv.className = 'websim-preview-details';
+
+    // Title
+    const titleEl = document.createElement('h3');
+    titleEl.className = 'websim-preview-title';
+    titleEl.textContent = project.title || 'Untitled Websim Project';
+    detailsDiv.appendChild(titleEl);
+
+    // Author
+    if (project.created_by && project.created_by.username) {
+      const authorDiv = document.createElement('div');
+      authorDiv.className = 'websim-preview-author';
+      const authorAvatar = document.createElement('img');
+      authorAvatar.className = 'websim-preview-author-avatar';
+      authorAvatar.src = `https://images.websim.com/avatar/${project.created_by.username}`;
+      authorAvatar.alt = ''; 
+      authorDiv.appendChild(authorAvatar);
+      const authorName = document.createElement('span');
+      authorName.textContent = `@${project.created_by.username}`;
+      authorDiv.appendChild(authorName);
+      detailsDiv.appendChild(authorDiv);
+    }
+
+    // Stats
+    if (project.stats) {
+      const statsDiv = document.createElement('div');
+      statsDiv.className = 'websim-preview-stats';
+      
+      statsDiv.innerHTML = `
+        <span><span class="stat-icon">❤️</span> ${formatStat(project.stats.likes)}</span>
+        <span><span class="stat-icon">💬</span> ${formatStat(project.stats.comments)}</span>
+        <span><span class="stat-icon">👁️</span> ${formatStat(project.stats.views)}</span>
+      `;
+      detailsDiv.appendChild(statsDiv);
+    }
+    
+    card.appendChild(detailsDiv);
+
+  } catch (error) {
+    console.error('Failed to render Websim project preview:', error);
+    card.classList.remove('loading');
+    card.innerHTML = `Failed to load preview. <a href="${websimInfo.originalUrl}" target="_blank" rel="noopener noreferrer">${websimInfo.originalUrl}</a>`;
+    card.className = 'websim-preview-card websim-site-preview-card'; 
+    const urlSpan = document.createElement('span');
+    urlSpan.className = 'site-url';
+    urlSpan.textContent = `Error loading preview for: ${websimInfo.originalUrl}`;
+    card.textContent = ''; 
+    card.appendChild(urlSpan);
+  }
+}
+
+function renderWebsimSitePreview(websimInfo, linkNode, parentElement) {
+  const card = document.createElement('a');
+  card.href = websimInfo.originalUrl;
+  card.className = 'websim-preview-card websim-site-preview-card'; 
+  card.target = '_blank';
+  card.rel = 'noopener noreferrer';
+
+  const titleSpan = document.createElement('span');
+  titleSpan.className = 'site-caption';
+  
+  let captionText = `Websim Site: ${websimInfo.id}`;
+  if (linkNode.children && linkNode.children.length > 0) {
+    const tempDiv = document.createElement('div');
+    linkNode.children.forEach(childNode => renderInlineContent(childNode, tempDiv)); 
+    const extractedText = tempDiv.textContent.trim();
+    if (extractedText && extractedText.toLowerCase() !== websimInfo.originalUrl.toLowerCase()) {
+      captionText = extractedText;
+    }
+  }
+  titleSpan.textContent = captionText;
+  card.appendChild(titleSpan);
+
+  const urlSpan = document.createElement('span');
+  urlSpan.className = 'site-url';
+  urlSpan.textContent = websimInfo.originalUrl;
+  card.appendChild(urlSpan);
+  
+  parentElement.appendChild(card);
+}
+
 function renderInlineContent(node, parentElement) {
   let element;
   switch (node.type) {
@@ -264,8 +427,15 @@ function renderInlineContent(node, parentElement) {
       parentElement.appendChild(document.createElement('br'));
       break;
     case 'link':
-      if (isImageUrl(node.url)) {
-        // If the link URL is an image, render it as an <img> tag
+      const websimInfo = getWebsimLinkInfo(node.url);
+
+      if (websimInfo) {
+        if (websimInfo.type === 'project') {
+          renderWebsimProjectPreview(websimInfo, node, parentElement);
+        } else if (websimInfo.type === 'site') {
+          renderWebsimSitePreview(websimInfo, node, parentElement);
+        }
+      } else if (isImageUrl(node.url)) {
         const img = document.createElement('img');
         img.src = node.url;
 
@@ -276,56 +446,39 @@ function renderInlineContent(node, parentElement) {
           });
         }
         altText = altText.trim();
-        // Fallback alt text if no text children provide a description
         img.alt = altText || ('Linked image: ' + (node.url.substring(node.url.lastIndexOf('/') + 1) || node.url));
         
-        img.className = 'content-image'; // Apply the styling for contained 256x256 images
+        img.className = 'content-image'; 
         parentElement.appendChild(img);
 
-        // Caption logic: Render children as caption if they provide meaningful content
-        // This is modified to prevent duplicate image rendering.
         if (node.children && node.children.length > 0) {
           const captionDiv = document.createElement('div');
           captionDiv.className = 'iframe-caption'; 
           
           node.children.forEach(childNode => {
             if (childNode.type === 'image') {
-              // If child is an ImageNode, add its alt text to the caption (if any).
-              // Do not render it as another <img> tag.
               if (childNode.alt && childNode.alt.trim() !== '') {
                 const textSpan = document.createElement('span');
                 textSpan.textContent = childNode.alt;
-                // Apply text styles from ImageNode if they were part of its schema (currently not)
-                // e.g., if (childNode.bold) textSpan.style.fontWeight = 'bold';
                 captionDiv.appendChild(textSpan);
               }
             } else if (childNode.type === 'link' && isImageUrl(childNode.url)) {
-              // If child is another LinkNode that points to an image,
-              // extract text from its children (grandchildren of the main link node) for the caption.
-              // Do not render this nested link as another image.
               if (childNode.children) {
                 childNode.children.forEach(grandChildNode => {
                   if (grandChildNode.type === 'text' || grandChildNode.type === 'break') {
-                     // Only render text or breaks from grandchildren of an image link.
                     renderInlineContent(grandChildNode, captionDiv);
                   }
-                  // Other types of grandchildren (like nested images) are ignored here to prevent duplication.
                 });
               }
             } else {
-              // For all other types of children (TextNode, BreakNode, non-image LinkNode),
-              // render them normally into the caption.
               renderInlineContent(childNode, captionDiv);
             }
           });
           
           const captionText = captionDiv.textContent.trim();
-          const captionHTML = captionDiv.innerHTML.trim(); // Actual HTML content of the caption
+          const captionHTML = captionDiv.innerHTML.trim(); 
 
           let showCaption = false;
-          // Original logic for deciding whether to show the caption for an image link.
-          // Show if captionHTML has content AND (captionText is different from img.alt OR 
-          // (captionText is empty but captionHTML is not empty and also not same as img.alt)).
           if (captionHTML) { 
             if (captionText !== img.alt || (captionText === '' && captionHTML !== img.alt && captionHTML !== '')) {
                showCaption = true;
@@ -337,18 +490,14 @@ function renderInlineContent(node, parentElement) {
           }
         }
       } else {
-        // Original iframe logic for non-image links
         const iframe = document.createElement('iframe');
         iframe.src = node.url;
         iframe.className = 'content-iframe';
         iframe.width = "256";
         iframe.height = "256";
         iframe.scrolling = "no";
-        // Consider iframe sandboxing for security if content is untrusted,
-        // e.g., iframe.sandbox = "allow-scripts allow-same-origin"; (but this can break legitimate embeds)
         parentElement.appendChild(iframe);
 
-        // Caption logic for iframes
         if (node.children && node.children.length > 0) {
           const captionDiv = document.createElement('div');
           captionDiv.className = 'iframe-caption';
@@ -358,9 +507,7 @@ function renderInlineContent(node, parentElement) {
           const captionHTML = captionDiv.innerHTML.trim();
           
           let showCaption = false;
-          if (captionHTML) { // If caption has any content
-            // Show if caption text is not just the iframe's URL,
-            // or if caption contains non-text elements.
+          if (captionHTML) { 
             if (captionText.toLowerCase() !== node.url.toLowerCase() || (captionText === '' && captionHTML)) {
                 showCaption = true;
             }
@@ -426,12 +573,11 @@ function renderInlineContent(node, parentElement) {
       else if (node.strike) projectLink.style.textDecoration = 'line-through';
       parentElement.appendChild(projectLink);
       break;
-    case 'project_comment': // Handle inline comment mentions
+    case 'project_comment': 
         const commentLink = document.createElement('a');
-        commentLink.href = `https://websim.com/p/${node.project_id}#comment-${node.id}`; // Example link structure
+        commentLink.href = `https://websim.com/p/${node.project_id}#comment-${node.id}`; 
         commentLink.textContent = `Comment: ${node.id}`;
         commentLink.target = '_blank';
-        // Apply text styles if any
         if (node.bold) commentLink.style.fontWeight = 'bold';
         if (node.italic) commentLink.style.fontStyle = 'italic';
         if (node.underline) commentLink.style.textDecoration = node.strike ? 'underline line-through' : 'underline';
