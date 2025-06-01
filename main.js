@@ -252,7 +252,12 @@ function renderInlineContent(node, parentElement) {
       const iframe = document.createElement('iframe');
       iframe.src = node.url;
       iframe.className = 'content-iframe';
-      // iframe.sandbox = "allow-scripts allow-same-origin"; // Potentially restrictive
+      // Set attributes for fixed size and no scrolling as per user request
+      // CSS will also define this, but attributes can be a fallback or initial hint.
+      iframe.width = "256"; // Explicitly set width attribute
+      iframe.height = "256"; // Explicitly set height attribute
+      iframe.scrolling = "no"; // Advise against scrollbars
+      // iframe.sandbox = "allow-scripts allow-same-origin"; // Potentially restrictive, keep commented unless needed
       parentElement.appendChild(iframe);
 
       if (node.children && node.children.length > 0) {

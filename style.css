@@ -74,23 +74,22 @@ h1 {
 }
 
 .comment-content img.content-image { 
-  width: 256px; 
-  height: 256px; 
-  object-fit: cover; 
+  max-width: 256px; 
+  height: auto; 
   display: block;
   margin: 8px 0;
   border-radius: 4px;
   border: 1px solid #eee;
-  overflow: hidden; 
 }
 
 .comment-content iframe.content-iframe {
-  width: 100%; 
-  height: 220px; 
+  width: 256px; 
+  height: 256px; 
   border: 1px solid #ccd0d5;
   margin: 8px 0;
   display: block;
   border-radius: 4px;
+  overflow: hidden; 
 }
 
 .comment-content .user-mention {
