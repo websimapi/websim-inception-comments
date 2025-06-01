@@ -15,11 +15,25 @@ async function main() {
     }
     const commentsCollection = await response.json();
     
-    // Ensure commentsCollection and commentsCollection.data are valid
-    if (!commentsCollection || !commentsCollection.data) {
-        throw new Error('Invalid comments data received from API.');
+    console.log('Raw API response:', commentsCollection); // Debug log
+    
+    // Ensure commentsCollection exists and has the expected structure
+    if (!commentsCollection) {
+        throw new Error('No data received from API.');
     }
-    const comments = commentsCollection.data.map(c => c.comment);
+    
+    // Handle different possible response structures
+    let comments = [];
+    if (commentsCollection.comments && commentsCollection.comments.data) {
+      // Structure: { comments: { data: [...] } }
+      comments = commentsCollection.comments.data.map(c => c.comment);
+    } else if (commentsCollection.data) {
+      // Structure: { data: [...] }
+      comments = commentsCollection.data.map(c => c.comment);
+    } else {
+      console.warn('Unexpected API response structure:', commentsCollection);
+      throw new Error('Invalid comments data structure received from API.');
+    }
 
     commentsContainer.innerHTML = ''; // Clear "Loading..." message
 
@@ -274,4 +288,3 @@ function renderInlineContent(node, parentElement) {
 }
 
 document.addEventListener('DOMContentLoaded', main);
-
