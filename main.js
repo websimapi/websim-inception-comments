@@ -217,13 +217,13 @@ function renderBlockContent(node, parentElement) {
       parentElement.appendChild(projectBlockLink);
       break;
     case 'project_comment_block': // Handle comment mentions as blocks
-      const commentBlockDiv = document.createElement('div');
-      commentBlockDiv.className = 'block-link project-comment-block-link'; // Reuse styling
-      commentBlockDiv.innerHTML = `Referenced Comment: <a href="https://websim.com/p/${node.project_id}#comment-${node.id}" target="_blank">${node.id}</a> (on project ${node.project_id})`;
-      // If node.content exists for project_comment_block, it could be rendered recursively here.
-      // For now, keeping it simple.
-      parentElement.appendChild(commentBlockDiv);
-      break;
+        const commentBlockDiv = document.createElement('div');
+        commentBlockDiv.className = 'block-link project-comment-block-link'; // Reuse styling
+        commentBlockDiv.innerHTML = `Referenced Comment: <a href="https://websim.com/p/${node.project_id}#comment-${node.id}" target="_blank">${node.id}</a> (on project ${node.project_id})`;
+        // If node.content exists for project_comment_block, it could be rendered recursively here.
+        // For now, keeping it simple.
+        parentElement.appendChild(commentBlockDiv);
+        break;
     default:
       console.warn('Unsupported block content type:', node.type, node);
       const unknownBlock = document.createElement('div');
@@ -255,29 +255,109 @@ function parseWebsimUrl(url) {
     // Assuming websim URLs will be absolute or root-relative from websim.com.
     const absoluteUrl = new URL(url, 'https://websim.com'); 
     
-    if (absoluteUrl.hostname === 'websim.com' || absoluteUrl.hostname === 'www.websim.com') {
-      const pathParts = absoluteUrl.pathname.split('/').filter(part => part !== ''); 
+    if (absoluteUrl.hostname !== 'websim.com' && absoluteUrl.hostname !== 'www.websim.com') {
+      return null; // Not a websim.com domain
+    }
 
-      if (pathParts.length >= 2) {
-        if (pathParts[0] === 'p' && pathParts[1]) {
-          // Validate project ID format
-          if (/^[a-z0-9_-]{20}$/.test(pathParts[1])) {
-             return { type: 'project', id: pathParts[1], originalUrl: url };
-          }
-        } else if (pathParts[0] === 'c' && pathParts[1]) {
-          // Validate site ID format
-          if (/^[a-zA-Z0-9]{17}$/.test(pathParts[1])) {
-            return { type: 'site', id: pathParts[1], originalUrl: url };
-          }
-        }
+    const pathParts = absoluteUrl.pathname.split('/').filter(part => part !== ''); 
+
+    if (pathParts.length === 0) return null; // e.g. https://websim.com/
+
+    // Check for /@username/slug pattern (most specific with two parts)
+    // Example: /@testuser/my-cool-project
+    if (pathParts.length === 2 && pathParts[0].startsWith('@')) {
+      const username = pathParts[0].substring(1);
+      const slug = pathParts[1];
+      if (/^[a-zA-Z0-9_]{3,32}$/.test(username) && /^[a-zA-Z0-9-]{3,50}$/.test(slug)) {
+        return { type: 'slug', username: username, slug: slug, originalUrl: absoluteUrl.href };
       }
     }
+
+    // Check for /p/project_id... pattern
+    // Example: /p/project123, /p/project123/v/1
+    if (pathParts[0] === 'p' && pathParts.length >= 2) {
+      const projectId = pathParts[1];
+      if (/^[a-z0-9_-]{20}$/.test(projectId)) {
+        return { type: 'project', id: projectId, originalUrl: absoluteUrl.href };
+      }
+    }
+
+    // Check for /c/site_id... pattern
+    // Example: /c/siteABC, /c/siteABC/anything
+    // Note: pathParts.length >= 2 ensures there's at least /c/SITE_ID
+    if (pathParts[0] === 'c' && pathParts.length >= 2) {
+      const siteId = pathParts[1];
+      if (/^[a-zA-Z0-9]{17}$/.test(siteId)) {
+        return { type: 'site', id: siteId, originalUrl: absoluteUrl.href };
+      }
+    }
+
   } catch (e) {
     // console.warn("Error parsing URL for websim check:", url, e);
     return null;
   }
   return null;
 }
+
+async function renderProjectDataOnCard(apiResponseData, originalLinkUrl, placeholderElement) {
+  const { project, project_revision } = apiResponseData;
+
+  if (!project || !project_revision) {
+    placeholderElement.textContent = `Could not load details for the linked project.`;
+    console.error(`Incomplete data for project (from URL ${originalLinkUrl}):`, apiResponseData);
+    return;
+  }
+
+  const card = document.createElement('a');
+  card.href = originalLinkUrl; // Use the original (potentially canonicalized) link URL
+  card.target = '_blank';
+  card.className = 'project-link-card';
+
+  if (project_revision.current_screenshot_url) {
+    const thumbnail = document.createElement('img');
+    thumbnail.src = project_revision.current_screenshot_url;
+    thumbnail.alt = project.title || `Thumbnail for project ${project.id}`;
+    thumbnail.className = 'project-link-thumbnail';
+    card.appendChild(thumbnail);
+  } else {
+    const noThumbnailDiv = document.createElement('div');
+    noThumbnailDiv.className = 'project-link-thumbnail project-link-no-thumbnail';
+    noThumbnailDiv.textContent = '🖼️'; // Default icon or text
+    card.appendChild(noThumbnailDiv);
+  }
+
+  const infoDiv = document.createElement('div');
+  infoDiv.className = 'project-link-info';
+
+  const titleElement = document.createElement('h4');
+  titleElement.className = 'project-link-title';
+  titleElement.textContent = project.title || `Project: ${project.id}`;
+  infoDiv.appendChild(titleElement);
+
+  if (project.stats) {
+    const statsElement = document.createElement('p');
+    statsElement.className = 'project-link-stats';
+    statsElement.textContent = `👁️ ${project.stats.views || 0}  ❤️ ${project.stats.likes || 0}  💬 ${project.stats.comments || 0}`;
+    infoDiv.appendChild(statsElement);
+  }
+  
+  if (project.description) {
+      const descriptionElement = document.createElement('p');
+      descriptionElement.className = 'project-link-description';
+      const maxLength = 80;
+      descriptionElement.textContent = project.description.length > maxLength ? project.description.substring(0, maxLength) + '...' : project.description;
+      infoDiv.appendChild(descriptionElement);
+  }
+
+  card.appendChild(infoDiv);
+  
+  if (placeholderElement.parentNode) {
+      placeholderElement.parentNode.replaceChild(card, placeholderElement);
+  } else {
+      console.warn("Placeholder for project card was detached before rendering card for:", originalLinkUrl);
+  }
+}
+
 
 async function fetchProjectAndRenderCard(projectId, projectLinkUrl, placeholderElement) {
   try {
@@ -288,70 +368,26 @@ async function fetchProjectAndRenderCard(projectId, projectLinkUrl, placeholderE
       return;
     }
     const data = await response.json();
-    const { project, project_revision } = data;
-
-    if (!project || !project_revision) {
-      placeholderElement.textContent = `Could not load details for project ${projectId}.`;
-      console.error(`Incomplete data for project ${projectId}:`, data);
-      return;
-    }
-
-    const card = document.createElement('a');
-    card.href = projectLinkUrl; // Use the original link URL
-    card.target = '_blank';
-    card.className = 'project-link-card';
-
-    if (project_revision.current_screenshot_url) {
-      const thumbnail = document.createElement('img');
-      thumbnail.src = project_revision.current_screenshot_url;
-      thumbnail.alt = project.title || `Thumbnail for project ${projectId}`;
-      thumbnail.className = 'project-link-thumbnail';
-      card.appendChild(thumbnail);
-    } else {
-      // Add a placeholder if no thumbnail
-      const noThumbnailDiv = document.createElement('div');
-      noThumbnailDiv.className = 'project-link-thumbnail project-link-no-thumbnail';
-      noThumbnailDiv.textContent = '🖼️'; // Default icon or text
-      card.appendChild(noThumbnailDiv);
-    }
-
-
-    const infoDiv = document.createElement('div');
-    infoDiv.className = 'project-link-info';
-
-    const titleElement = document.createElement('h4');
-    titleElement.className = 'project-link-title';
-    titleElement.textContent = project.title || `Project: ${projectId}`;
-    infoDiv.appendChild(titleElement);
-
-    if (project.stats) {
-      const statsElement = document.createElement('p');
-      statsElement.className = 'project-link-stats';
-      statsElement.textContent = `👁️ ${project.stats.views || 0}  ❤️ ${project.stats.likes || 0}  💬 ${project.stats.comments || 0}`;
-      infoDiv.appendChild(statsElement);
-    }
-    
-    if (project.description) {
-        const descriptionElement = document.createElement('p');
-        descriptionElement.className = 'project-link-description';
-        const maxLength = 80;
-        descriptionElement.textContent = project.description.length > maxLength ? project.description.substring(0, maxLength) + '...' : project.description;
-        infoDiv.appendChild(descriptionElement);
-    }
-
-    card.appendChild(infoDiv);
-    
-    if (placeholderElement.parentNode) {
-        placeholderElement.parentNode.replaceChild(card, placeholderElement);
-    } else {
-        // Fallback if placeholder somehow got detached, though unlikely
-        console.warn("Placeholder for project card was detached before rendering.");
-    }
-
-
+    renderProjectDataOnCard(data, projectLinkUrl, placeholderElement);
   } catch (error) {
     placeholderElement.textContent = `Error processing project data.`;
     console.error(`Error fetching/rendering project card for ${projectId}:`, error);
+  }
+}
+
+async function fetchProjectBySlugAndRenderCard(username, slug, originalLinkUrl, placeholderElement) {
+  try {
+    const response = await fetch(`/api/v1/users/${username}/slugs/${slug}`);
+    if (!response.ok) {
+      placeholderElement.textContent = `Error loading project data: ${response.status}`;
+      console.error(`Failed to fetch project @${username}/${slug}: ${response.status}, ${await response.text()}`);
+      return;
+    }
+    const data = await response.json();
+    renderProjectDataOnCard(data, originalLinkUrl, placeholderElement);
+  } catch (error) {
+    placeholderElement.textContent = `Error processing project data.`;
+    console.error(`Error fetching/rendering project card for @${username}/${slug}:`, error);
   }
 }
 
@@ -438,21 +474,31 @@ function renderInlineContent(node, parentElement) {
           // Asynchronously fetch and render the project card
           fetchProjectAndRenderCard(websimInfo.id, websimInfo.originalUrl, projectCardPlaceholder);
 
+        } else if (websimInfo && websimInfo.type === 'slug') {
+          const projectCardPlaceholder = document.createElement('div');
+          projectCardPlaceholder.className = 'project-link-card-placeholder';
+          projectCardPlaceholder.textContent = `Loading Websim Project: @${websimInfo.username}/${websimInfo.slug}...`;
+          parentElement.appendChild(projectCardPlaceholder);
+          fetchProjectBySlugAndRenderCard(websimInfo.username, websimInfo.slug, websimInfo.originalUrl, projectCardPlaceholder);
+        
         } else if (websimInfo && websimInfo.type === 'site') {
           // Render as a simple styled link for Websim sites
           const siteLinkElement = document.createElement('a');
-          siteLinkElement.href = websimInfo.originalUrl;
+          siteLinkElement.href = websimInfo.originalUrl; // Use the canonical URL
           siteLinkElement.target = '_blank';
           
-          let linkTextContent = `Websim Site: ${websimInfo.id}`;
+          let linkTextContent = '';
           // Try to use node children for link text
           if (node.children && node.children.length > 0) {
             const tempContainer = document.createElement('span'); // Use span for inline rendering
             node.children.forEach(childNode => renderInlineContent(childNode, tempContainer));
-            const extractedText = tempContainer.textContent.trim();
-            if (extractedText) {
-              linkTextContent = extractedText;
-            }
+            linkTextContent = tempContainer.textContent.trim();
+          }
+          
+          // If linkTextContent is empty or it's just the URL itself, use a default.
+          const displayUrl = websimInfo.originalUrl || node.url;
+          if (!linkTextContent || linkTextContent.toLowerCase() === displayUrl.toLowerCase()) {
+            linkTextContent = `Websim Site: ${websimInfo.id}`;
           }
           siteLinkElement.textContent = linkTextContent;
 
@@ -465,9 +511,9 @@ function renderInlineContent(node, parentElement) {
           parentElement.appendChild(siteLinkElement);
 
         } else {
-          // URL is not an image, not a recognized Websim project/site URL, or is external.
+          // URL is not an image, not a recognized Websim project/site/slug URL, or is external.
           // According to prompt "if its out of websim do not render the url at all", so do nothing here.
-          // console.log(`Skipping URL (not image, not Websim project/site, or external): ${node.url}`);
+          // console.log(`Skipping URL (not image, not recognized Websim, or external): ${node.url}`);
         }
       }
       break;
