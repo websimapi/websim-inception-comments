@@ -233,6 +233,21 @@ function renderBlockContent(node, parentElement) {
   }
 }
 
+function isImageUrl(url) {
+  if (!url) return false;
+  try {
+    // Use window.location.origin as a base for potentially relative URLs,
+    // though API URLs are typically absolute.
+    const parsedUrl = new URL(url, window.location.origin);
+    const path = parsedUrl.pathname.toLowerCase();
+    return /\.(jpe?g|png|gif|webp|svg)$/.test(path);
+  } catch (e) {
+    // Invalid URL syntax
+    console.warn('Invalid URL encountered in isImageUrl:', url, e);
+    return false;
+  }
+}
+
 function renderInlineContent(node, parentElement) {
   let element;
   switch (node.type) {
@@ -249,23 +264,80 @@ function renderInlineContent(node, parentElement) {
       parentElement.appendChild(document.createElement('br'));
       break;
     case 'link':
-      const iframe = document.createElement('iframe');
-      iframe.src = node.url;
-      iframe.className = 'content-iframe';
-      // Set attributes for fixed size and no scrolling as per user request
-      // CSS will also define this, but attributes can be a fallback or initial hint.
-      iframe.width = "256"; // Explicitly set width attribute
-      iframe.height = "256"; // Explicitly set height attribute
-      iframe.scrolling = "no"; // Advise against scrollbars
-      // iframe.sandbox = "allow-scripts allow-same-origin"; // Potentially restrictive, keep commented unless needed
-      parentElement.appendChild(iframe);
+      if (isImageUrl(node.url)) {
+        // If the link URL is an image, render it as an <img> tag
+        const img = document.createElement('img');
+        img.src = node.url;
 
-      if (node.children && node.children.length > 0) {
-        const captionDiv = document.createElement('div');
-        captionDiv.className = 'iframe-caption';
-        node.children.forEach(childNode => renderInlineContent(childNode, captionDiv));
-        if (captionDiv.textContent.trim() && captionDiv.textContent.trim().toLowerCase() !== node.url.toLowerCase()) {
-          parentElement.appendChild(captionDiv);
+        let altText = '';
+        if (node.children && node.children.length > 0) {
+          node.children.forEach(child => {
+            if (child.type === 'text') altText += child.text + ' ';
+          });
+        }
+        altText = altText.trim();
+        // Fallback alt text if no text children provide a description
+        img.alt = altText || 'Linked image: ' + (node.url.substring(node.url.lastIndexOf('/') + 1) || node.url);
+        
+        img.className = 'content-image'; // Apply the styling for contained 256x256 images
+        parentElement.appendChild(img);
+
+        // Caption logic: Render children as caption if they provide meaningful content
+        // that isn't just the alt text we've already used.
+        if (node.children && node.children.length > 0) {
+          const captionDiv = document.createElement('div');
+          captionDiv.className = 'iframe-caption'; // Reuse caption style
+          node.children.forEach(childNode => renderInlineContent(childNode, captionDiv));
+          
+          const captionText = captionDiv.textContent.trim();
+          const captionHTML = captionDiv.innerHTML.trim();
+
+          let showCaption = false;
+          if (captionHTML) { // If caption has any content (text or elements)
+            // Show if caption text is different from the image's alt text,
+            // or if caption contains non-text elements (like another image, unlikely but possible)
+            if (captionText !== img.alt || (captionText === '' && captionHTML !== img.alt)) {
+               showCaption = true;
+            }
+          }
+
+          if (showCaption) {
+            parentElement.appendChild(captionDiv);
+          }
+        }
+      } else {
+        // Original iframe logic for non-image links
+        const iframe = document.createElement('iframe');
+        iframe.src = node.url;
+        iframe.className = 'content-iframe';
+        iframe.width = "256";
+        iframe.height = "256";
+        iframe.scrolling = "no";
+        // Consider iframe sandboxing for security if content is untrusted,
+        // e.g., iframe.sandbox = "allow-scripts allow-same-origin"; (but this can break legitimate embeds)
+        parentElement.appendChild(iframe);
+
+        // Caption logic for iframes
+        if (node.children && node.children.length > 0) {
+          const captionDiv = document.createElement('div');
+          captionDiv.className = 'iframe-caption';
+          node.children.forEach(childNode => renderInlineContent(childNode, captionDiv));
+          
+          const captionText = captionDiv.textContent.trim();
+          const captionHTML = captionDiv.innerHTML.trim();
+          
+          let showCaption = false;
+          if (captionHTML) { // If caption has any content
+            // Show if caption text is not just the iframe's URL,
+            // or if caption contains non-text elements.
+            if (captionText.toLowerCase() !== node.url.toLowerCase() || (captionText === '' && captionHTML)) {
+                showCaption = true;
+            }
+          }
+          
+          if (showCaption) {
+            parentElement.appendChild(captionDiv);
+          }
         }
       }
       break;
