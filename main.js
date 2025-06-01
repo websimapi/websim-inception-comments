@@ -248,167 +248,111 @@ function isImageUrl(url) {
   }
 }
 
-// Helper to format large numbers (e.g., 1234 -> 1.2K)
-function formatStat(num) {
-  if (num === null || num === undefined) return '0';
-  if (num >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-  if (num >= 1000) return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
-  return num.toString();
-}
-
-// Helper to identify Websim project/site links
-function getWebsimLinkInfo(url) {
+function parseWebsimUrl(url) {
+  if (!url) return null;
   try {
-    const parsedUrl = new URL(url, window.location.origin); 
-    if (parsedUrl.hostname !== 'websim.com' && parsedUrl.hostname !== 'www.websim.com') {
-      return null;
-    }
+    // Use a base URL to handle relative paths correctly.
+    // Assuming websim URLs will be absolute or root-relative from websim.com.
+    const absoluteUrl = new URL(url, 'https://websim.com'); 
+    
+    if (absoluteUrl.hostname === 'websim.com' || absoluteUrl.hostname === 'www.websim.com') {
+      const pathParts = absoluteUrl.pathname.split('/').filter(part => part !== ''); 
 
-    const pathParts = parsedUrl.pathname.split('/').filter(Boolean);
-
-    if (pathParts.length === 2) {
-      if (pathParts[0] === 'p' && /^[a-z0-9_-]{20}$/.test(pathParts[1])) {
-        return { type: 'project', id: pathParts[1], originalUrl: parsedUrl.href };
-      } else if (pathParts[0] === 'c' && /^[a-zA-Z0-9]{17}$/.test(pathParts[1])) {
-        return { type: 'site', id: pathParts[1], originalUrl: parsedUrl.href };
+      if (pathParts.length >= 2) {
+        if (pathParts[0] === 'p' && pathParts[1]) {
+          // Validate project ID format
+          if (/^[a-z0-9_-]{20}$/.test(pathParts[1])) {
+             return { type: 'project', id: pathParts[1], originalUrl: url };
+          }
+        } else if (pathParts[0] === 'c' && pathParts[1]) {
+          // Validate site ID format
+          if (/^[a-zA-Z0-9]{17}$/.test(pathParts[1])) {
+            return { type: 'site', id: pathParts[1], originalUrl: url };
+          }
+        }
       }
     }
-    return null;
   } catch (e) {
-    console.warn('Error parsing URL in getWebsimLinkInfo:', url, e);
+    // console.warn("Error parsing URL for websim check:", url, e);
     return null;
   }
+  return null;
 }
 
-async function renderWebsimProjectPreview(websimInfo, linkNode, parentElement) {
-  const card = document.createElement('a');
-  card.href = websimInfo.originalUrl;
-  card.className = 'websim-preview-card loading';
-  card.target = '_blank';
-  card.rel = 'noopener noreferrer';
-  card.textContent = `Loading preview for ${websimInfo.id}...`;
-  parentElement.appendChild(card);
-
+async function fetchProjectAndRenderCard(projectId, projectLinkUrl, placeholderElement) {
   try {
-    const response = await fetch(`/api/v1/projects/${websimInfo.id}`);
+    const response = await fetch(`/api/v1/projects/${projectId}`);
     if (!response.ok) {
-      throw new Error(`HTTP error ${response.status}`);
+      placeholderElement.textContent = `Error loading project data: ${response.status}`;
+      console.error(`Failed to fetch project ${projectId}: ${response.status}, ${await response.text()}`);
+      return;
     }
     const data = await response.json();
-    const project = data.project;
-    const projectRevision = data.project_revision;
-    const site = data.site;
+    const { project, project_revision } = data;
 
-    if (!project) {
-        throw new Error('Project data not found in API response.');
+    if (!project || !project_revision) {
+      placeholderElement.textContent = `Could not load details for project ${projectId}.`;
+      console.error(`Incomplete data for project ${projectId}:`, data);
+      return;
     }
 
-    card.innerHTML = ''; // Clear loading text
-    card.classList.remove('loading');
+    const card = document.createElement('a');
+    card.href = projectLinkUrl; // Use the original link URL
+    card.target = '_blank';
+    card.className = 'project-link-card';
 
-    // Thumbnail/Screenshot
-    const screenshotWrapper = document.createElement('div');
-    screenshotWrapper.className = 'websim-preview-screenshot-wrapper';
-    const screenshotImg = document.createElement('img');
-    screenshotImg.className = 'websim-preview-screenshot';
-    let thumbnailUrl = '/a/84858922-e894-40d0-837c-0f79f781753c'; // Default placeholder
-    if (projectRevision && projectRevision.current_screenshot_url) {
-      thumbnailUrl = projectRevision.current_screenshot_url;
-    } else if (site && site.id) {
-      thumbnailUrl = `https://images.websim.com/v1/site/${site.id}/300`;
-    }
-    screenshotImg.src = thumbnailUrl;
-    screenshotImg.alt = `Preview of ${project.title || 'Websim Project'}`;
-    screenshotWrapper.appendChild(screenshotImg);
-    card.appendChild(screenshotWrapper);
-    
-    screenshotImg.onerror = () => { 
-        screenshotImg.src = '/a/84858922-e894-40d0-837c-0f79f781753c'; 
-        screenshotImg.alt = 'Placeholder image';
-    };
-
-
-    // Details
-    const detailsDiv = document.createElement('div');
-    detailsDiv.className = 'websim-preview-details';
-
-    // Title
-    const titleEl = document.createElement('h3');
-    titleEl.className = 'websim-preview-title';
-    titleEl.textContent = project.title || 'Untitled Websim Project';
-    detailsDiv.appendChild(titleEl);
-
-    // Author
-    if (project.created_by && project.created_by.username) {
-      const authorDiv = document.createElement('div');
-      authorDiv.className = 'websim-preview-author';
-      const authorAvatar = document.createElement('img');
-      authorAvatar.className = 'websim-preview-author-avatar';
-      authorAvatar.src = `https://images.websim.com/avatar/${project.created_by.username}`;
-      authorAvatar.alt = ''; 
-      authorDiv.appendChild(authorAvatar);
-      const authorName = document.createElement('span');
-      authorName.textContent = `@${project.created_by.username}`;
-      authorDiv.appendChild(authorName);
-      detailsDiv.appendChild(authorDiv);
+    if (project_revision.current_screenshot_url) {
+      const thumbnail = document.createElement('img');
+      thumbnail.src = project_revision.current_screenshot_url;
+      thumbnail.alt = project.title || `Thumbnail for project ${projectId}`;
+      thumbnail.className = 'project-link-thumbnail';
+      card.appendChild(thumbnail);
+    } else {
+      // Add a placeholder if no thumbnail
+      const noThumbnailDiv = document.createElement('div');
+      noThumbnailDiv.className = 'project-link-thumbnail project-link-no-thumbnail';
+      noThumbnailDiv.textContent = '🖼️'; // Default icon or text
+      card.appendChild(noThumbnailDiv);
     }
 
-    // Stats
+
+    const infoDiv = document.createElement('div');
+    infoDiv.className = 'project-link-info';
+
+    const titleElement = document.createElement('h4');
+    titleElement.className = 'project-link-title';
+    titleElement.textContent = project.title || `Project: ${projectId}`;
+    infoDiv.appendChild(titleElement);
+
     if (project.stats) {
-      const statsDiv = document.createElement('div');
-      statsDiv.className = 'websim-preview-stats';
-      
-      statsDiv.innerHTML = `
-        <span><span class="stat-icon">❤️</span> ${formatStat(project.stats.likes)}</span>
-        <span><span class="stat-icon">💬</span> ${formatStat(project.stats.comments)}</span>
-        <span><span class="stat-icon">👁️</span> ${formatStat(project.stats.views)}</span>
-      `;
-      detailsDiv.appendChild(statsDiv);
+      const statsElement = document.createElement('p');
+      statsElement.className = 'project-link-stats';
+      statsElement.textContent = `👁️ ${project.stats.views || 0}  ❤️ ${project.stats.likes || 0}  💬 ${project.stats.comments || 0}`;
+      infoDiv.appendChild(statsElement);
     }
     
-    card.appendChild(detailsDiv);
+    if (project.description) {
+        const descriptionElement = document.createElement('p');
+        descriptionElement.className = 'project-link-description';
+        const maxLength = 80;
+        descriptionElement.textContent = project.description.length > maxLength ? project.description.substring(0, maxLength) + '...' : project.description;
+        infoDiv.appendChild(descriptionElement);
+    }
+
+    card.appendChild(infoDiv);
+    
+    if (placeholderElement.parentNode) {
+        placeholderElement.parentNode.replaceChild(card, placeholderElement);
+    } else {
+        // Fallback if placeholder somehow got detached, though unlikely
+        console.warn("Placeholder for project card was detached before rendering.");
+    }
+
 
   } catch (error) {
-    console.error('Failed to render Websim project preview:', error);
-    card.classList.remove('loading');
-    card.innerHTML = `Failed to load preview. <a href="${websimInfo.originalUrl}" target="_blank" rel="noopener noreferrer">${websimInfo.originalUrl}</a>`;
-    card.className = 'websim-preview-card websim-site-preview-card'; 
-    const urlSpan = document.createElement('span');
-    urlSpan.className = 'site-url';
-    urlSpan.textContent = `Error loading preview for: ${websimInfo.originalUrl}`;
-    card.textContent = ''; 
-    card.appendChild(urlSpan);
+    placeholderElement.textContent = `Error processing project data.`;
+    console.error(`Error fetching/rendering project card for ${projectId}:`, error);
   }
-}
-
-function renderWebsimSitePreview(websimInfo, linkNode, parentElement) {
-  const card = document.createElement('a');
-  card.href = websimInfo.originalUrl;
-  card.className = 'websim-preview-card websim-site-preview-card'; 
-  card.target = '_blank';
-  card.rel = 'noopener noreferrer';
-
-  const titleSpan = document.createElement('span');
-  titleSpan.className = 'site-caption';
-  
-  let captionText = `Websim Site: ${websimInfo.id}`;
-  if (linkNode.children && linkNode.children.length > 0) {
-    const tempDiv = document.createElement('div');
-    linkNode.children.forEach(childNode => renderInlineContent(childNode, tempDiv)); 
-    const extractedText = tempDiv.textContent.trim();
-    if (extractedText && extractedText.toLowerCase() !== websimInfo.originalUrl.toLowerCase()) {
-      captionText = extractedText;
-    }
-  }
-  titleSpan.textContent = captionText;
-  card.appendChild(titleSpan);
-
-  const urlSpan = document.createElement('span');
-  urlSpan.className = 'site-url';
-  urlSpan.textContent = websimInfo.originalUrl;
-  card.appendChild(urlSpan);
-  
-  parentElement.appendChild(card);
 }
 
 function renderInlineContent(node, parentElement) {
@@ -427,15 +371,8 @@ function renderInlineContent(node, parentElement) {
       parentElement.appendChild(document.createElement('br'));
       break;
     case 'link':
-      const websimInfo = getWebsimLinkInfo(node.url);
-
-      if (websimInfo) {
-        if (websimInfo.type === 'project') {
-          renderWebsimProjectPreview(websimInfo, node, parentElement);
-        } else if (websimInfo.type === 'site') {
-          renderWebsimSitePreview(websimInfo, node, parentElement);
-        }
-      } else if (isImageUrl(node.url)) {
+      if (isImageUrl(node.url)) {
+        // If the link URL is an image, render it as an <img> tag
         const img = document.createElement('img');
         img.src = node.url;
 
@@ -448,7 +385,7 @@ function renderInlineContent(node, parentElement) {
         altText = altText.trim();
         img.alt = altText || ('Linked image: ' + (node.url.substring(node.url.lastIndexOf('/') + 1) || node.url));
         
-        img.className = 'content-image'; 
+        img.className = 'content-image';
         parentElement.appendChild(img);
 
         if (node.children && node.children.length > 0) {
@@ -476,7 +413,7 @@ function renderInlineContent(node, parentElement) {
           });
           
           const captionText = captionDiv.textContent.trim();
-          const captionHTML = captionDiv.innerHTML.trim(); 
+          const captionHTML = captionDiv.innerHTML.trim();
 
           let showCaption = false;
           if (captionHTML) { 
@@ -490,32 +427,47 @@ function renderInlineContent(node, parentElement) {
           }
         }
       } else {
-        const iframe = document.createElement('iframe');
-        iframe.src = node.url;
-        iframe.className = 'content-iframe';
-        iframe.width = "256";
-        iframe.height = "256";
-        iframe.scrolling = "no";
-        parentElement.appendChild(iframe);
+        // Handle non-image URLs
+        const websimInfo = parseWebsimUrl(node.url);
 
-        if (node.children && node.children.length > 0) {
-          const captionDiv = document.createElement('div');
-          captionDiv.className = 'iframe-caption';
-          node.children.forEach(childNode => renderInlineContent(childNode, captionDiv));
+        if (websimInfo && websimInfo.type === 'project') {
+          const projectCardPlaceholder = document.createElement('div');
+          projectCardPlaceholder.className = 'project-link-card-placeholder';
+          projectCardPlaceholder.textContent = `Loading Websim Project: ${websimInfo.id}...`;
+          parentElement.appendChild(projectCardPlaceholder);
+          // Asynchronously fetch and render the project card
+          fetchProjectAndRenderCard(websimInfo.id, websimInfo.originalUrl, projectCardPlaceholder);
+
+        } else if (websimInfo && websimInfo.type === 'site') {
+          // Render as a simple styled link for Websim sites
+          const siteLinkElement = document.createElement('a');
+          siteLinkElement.href = websimInfo.originalUrl;
+          siteLinkElement.target = '_blank';
           
-          const captionText = captionDiv.textContent.trim();
-          const captionHTML = captionDiv.innerHTML.trim();
-          
-          let showCaption = false;
-          if (captionHTML) { 
-            if (captionText.toLowerCase() !== node.url.toLowerCase() || (captionText === '' && captionHTML)) {
-                showCaption = true;
+          let linkTextContent = `Websim Site: ${websimInfo.id}`;
+          // Try to use node children for link text
+          if (node.children && node.children.length > 0) {
+            const tempContainer = document.createElement('span'); // Use span for inline rendering
+            node.children.forEach(childNode => renderInlineContent(childNode, tempContainer));
+            const extractedText = tempContainer.textContent.trim();
+            if (extractedText) {
+              linkTextContent = extractedText;
             }
           }
+          siteLinkElement.textContent = linkTextContent;
+
+          // Apply common link styles
+          if (node.bold) siteLinkElement.style.fontWeight = 'bold';
+          if (node.italic) siteLinkElement.style.fontStyle = 'italic';
+          if (node.underline) siteLinkElement.style.textDecoration = node.strike ? 'underline line-through' : 'underline';
+          else if (node.strike) siteLinkElement.style.textDecoration = 'line-through';
           
-          if (showCaption) {
-            parentElement.appendChild(captionDiv);
-          }
+          parentElement.appendChild(siteLinkElement);
+
+        } else {
+          // URL is not an image, not a recognized Websim project/site URL, or is external.
+          // According to prompt "if its out of websim do not render the url at all", so do nothing here.
+          // console.log(`Skipping URL (not image, not Websim project/site, or external): ${node.url}`);
         }
       }
       break;
@@ -573,11 +525,12 @@ function renderInlineContent(node, parentElement) {
       else if (node.strike) projectLink.style.textDecoration = 'line-through';
       parentElement.appendChild(projectLink);
       break;
-    case 'project_comment': 
+    case 'project_comment': // Handle inline comment mentions
         const commentLink = document.createElement('a');
-        commentLink.href = `https://websim.com/p/${node.project_id}#comment-${node.id}`; 
+        commentLink.href = `https://websim.com/p/${node.project_id}#comment-${node.id}`; // Example link structure
         commentLink.textContent = `Comment: ${node.id}`;
         commentLink.target = '_blank';
+        // Apply text styles if any
         if (node.bold) commentLink.style.fontWeight = 'bold';
         if (node.italic) commentLink.style.fontStyle = 'italic';
         if (node.underline) commentLink.style.textDecoration = node.strike ? 'underline line-through' : 'underline';

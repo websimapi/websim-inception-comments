@@ -154,104 +154,98 @@ h1 {
     font-style: italic;
 }
 
-/* Websim Link Preview Card Styles */
-.websim-preview-card {
+/* Styles for Websim Project Link Cards */
+.project-link-card-placeholder {
   display: block;
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
+  padding: 10px;
+  border: 1px dashed #b0b0b0;
+  border-radius: 6px;
+  background-color: #f0f2f5; /* Match body background */
+  color: #606770; /* Softer text color */
+  font-style: italic;
   margin: 10px 0;
+  text-align: center;
+  min-height: 50px; /* Ensure it has some height while loading */
+  line-height: 50px; /* Vertically center text */
+}
+
+.project-link-card {
+  display: flex;
+  border: 1px solid #d0d0d0; /* Slightly softer border */
+  border-radius: 6px;
+  margin: 10px 0;
+  padding: 12px;
+  background-color: #ffffff; /* White background for the card */
   text-decoration: none;
-  color: #1c1e21;
-  background-color: #ffffff;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-  transition: box-shadow 0.2s ease-in-out;
+  color: inherit;
+  transition: box-shadow 0.2s ease-in-out, transform 0.2s ease-in-out;
+  overflow: hidden; /* Ensure content fits within rounded borders */
 }
 
-.websim-preview-card:hover {
-  box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+.project-link-card:hover {
+  box-shadow: 0 3px 8px rgba(0,0,0,0.12);
+  transform: translateY(-2px); /* Subtle lift effect */
 }
 
-.websim-preview-card.loading {
-  min-height: 100px;
+.project-link-thumbnail {
+  width: 80px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 4px;
+  margin-right: 12px;
+  background-color: #e9ebee; /* Light grey for placeholder or image loading */
+  flex-shrink: 0;
+  border: 1px solid #ddd; /* Subtle border around thumbnail */
+}
+.project-link-no-thumbnail {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-style: italic;
-  color: #606770;
+  font-size: 24px; /* For emoji or icon */
+  color: #a0a0a0;
 }
 
-.websim-preview-screenshot-wrapper {
-  width: 100%;
-  height: 150px; /* Adjust as needed, or use aspect-ratio */
-  overflow: hidden;
-  background-color: #f0f2f5; /* Placeholder bg */
-  border-top-left-radius: 8px;
-  border-top-right-radius: 8px;
+
+.project-link-info {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start; /* Align items to the start */
+  flex-grow: 1;
+  min-width: 0; /* Important for text overflow in flex children */
 }
 
-.websim-preview-screenshot {
-  width: 100%;
-  height: 100%;
-  object-fit: cover; /* Ensures the image covers the area, might crop */
-  display: block;
-}
-
-.websim-preview-details {
-  padding: 12px 15px;
-}
-
-.websim-preview-title {
-  font-size: 1.1em;
+.project-link-title {
+  font-size: 1em; /* Slightly smaller for better fit */
   font-weight: 600;
-  margin: 0 0 8px 0;
-  line-height: 1.3;
+  margin: 0 0 4px 0;
+  color: #056be0; /* Use link color for title */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.websim-preview-author {
-  display: flex;
-  align-items: center;
-  font-size: 0.9em;
-  color: #606770;
-  margin-bottom: 10px;
+.project-link-card:hover .project-link-title {
+  text-decoration: underline;
 }
 
-.websim-preview-author-avatar {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  margin-right: 6px;
-  border: 1px solid #ddd;
-}
-
-.websim-preview-stats {
-  font-size: 0.85em;
-  color: #606770;
-  display: flex;
-  gap: 15px; /* Increased gap for clarity */
-  flex-wrap: wrap; /* Allow stats to wrap on smaller cards */
-}
-
-.websim-preview-stats span {
-  display: inline-flex;
-  align-items: center;
-}
-.websim-preview-stats span .stat-icon {
-  margin-right: 4px;
-}
-
-/* Simple Site Preview */
-.websim-site-preview-card {
-  padding: 10px 15px;
-  font-size: 0.9em;
-}
-.websim-site-preview-card .site-url {
-  display: block;
+.project-link-stats {
   font-size: 0.8em;
-  color: #056be0;
-  margin-top: 4px;
-  word-break: break-all;
+  color: #606770;
+  margin: 0 0 6px 0;
+  white-space: nowrap; /* Prevent stats from wrapping */
 }
-.websim-site-preview-card .site-caption {
-    font-style: italic;
-    color: #333;
+
+.project-link-description {
+  font-size: 0.85em;
+  color: #33373a;
+  margin: 0;
+  line-height: 1.4;
+  /* For multi-line ellipsis (works in WebKit/Blink) */
+  display: -webkit-box;
+  -webkit-line-clamp: 2; /* Show max 2 lines */
+  -webkit-box-orient: vertical;  
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* Fallback for other browsers (shows one line with ellipsis) */
+  /* max-height: calc(1.4em * 2); Remove if -webkit-line-clamp is sufficient */
 }
