@@ -74,7 +74,7 @@ h1 {
 }
 
 .comment-content img.content-image { 
-  max-width: 256px; 
+  max-width: 128px; 
   height: auto; 
   display: block;
   margin: 8px 0;
