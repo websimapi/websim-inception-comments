@@ -1,5 +1,8 @@
 let intervalId = null; // To potentially clear later if needed
 
+// Module-level variable to store the signature of the last rendered comments.
+let lastRenderedCommentsSignature = null;
+
 async function fetchAndRenderComments(projectId, commentsContainer) {
   try {
     const response = await fetch(`/api/v1/projects/${projectId}/comments?sort_by=created_at&sort_order=desc&first=10`);
@@ -26,6 +29,22 @@ async function fetchAndRenderComments(projectId, commentsContainer) {
       return;
     }
 
+    // Create a signature of the new comments using their id and created_at timestamp.
+    // This helps in determining if the actual comment data has changed since the last render.
+    const newCommentsSignature = JSON.stringify(comments.map(c => ({ 
+        id: c.id, 
+        created_at: c.created_at 
+    })));
+
+    // If the new signature matches the last rendered one, it means comments haven't changed.
+    if (newCommentsSignature === lastRenderedCommentsSignature) {
+      console.log('Comments data unchanged, skipping DOM update.');
+      return; // Exit without re-rendering to prevent image reloads and unnecessary DOM manipulation.
+    }
+    
+    console.log('Comments data changed or initial load, re-rendering.');
+    lastRenderedCommentsSignature = newCommentsSignature; // Update the signature to the new state.
+
     // Clear "Loading..." or old comments *before* rendering new set
     // This ensures that if renderNestedComments has an issue, the container is at least cleared.
     commentsContainer.innerHTML = ''; 
@@ -40,6 +59,8 @@ async function fetchAndRenderComments(projectId, commentsContainer) {
     // If an error occurs after clearing, display error in container.
     // This is a general catch-all.
     commentsContainer.innerHTML = `<p>Error loading comments: ${error.message}. Check console for more details.</p>`;
+    // Reset signature on error so the next successful fetch will attempt a full render.
+    lastRenderedCommentsSignature = null; 
   }
 }
 
@@ -53,7 +74,8 @@ async function main() {
       return;
     }
     
-    commentsContainer.innerHTML = '<p>Loading comments...</p>'; // Initial loading message
+    // Set initial loading message. fetchAndRenderComments will replace this.
+    commentsContainer.innerHTML = '<p>Loading comments...</p>'; 
 
     // Initial fetch
     await fetchAndRenderComments(project.id, commentsContainer);

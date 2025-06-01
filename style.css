@@ -73,10 +73,9 @@ h1 {
   margin-bottom: 0;
 }
 
-
-.comment-content img.content-image { /* Class for images inside content */
-  max-width: 100%;
-  max-height: 250px; /* Increased max-height slightly */
+.comment-content img.content-image { 
+  max-width: 256px; 
+  height: auto; 
   display: block;
   margin: 8px 0;
   border-radius: 4px;
@@ -84,8 +83,8 @@ h1 {
 }
 
 .comment-content iframe.content-iframe {
-  width: 100%; /* Use full width of content area */
-  height: 220px; /* Increased default height */
+  width: 100%; 
+  height: 220px; 
   border: 1px solid #ccd0d5;
   margin: 8px 0;
   display: block;
@@ -93,7 +92,7 @@ h1 {
 }
 
 .comment-content .user-mention {
-  display: inline-flex; /* Align image and text nicely */
+  display: inline-flex; 
   align-items: center;
 }
 
@@ -102,7 +101,7 @@ h1 {
     height: 18px;
     border-radius: 50%;
     margin-right: 5px;
-    vertical-align: middle; /* Better alignment if not using flex */
+    vertical-align: middle; 
 }
 .comment-content .user-mention a {
     text-decoration: none;
@@ -151,4 +150,3 @@ h1 {
     margin-top: 4px;
     font-style: italic;
 }
-
